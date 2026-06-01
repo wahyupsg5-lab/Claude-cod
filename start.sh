@@ -1,10 +1,10 @@
 #!/bin/bash
 
 echo "============================================"
-echo "  Claude Code Railway - Starting Up..."
+echo "  Claude Code Railway (VS Code / code-server)"
 echo "============================================"
 
-# ── 1. Validasi environment variables ──────────────────────────────────────
+# ── 1. Validasi env vars ───────────────────────────────────────────────────
 MISSING=""
 [ -z "$ANTHROPIC_API_KEY" ] && MISSING="$MISSING ANTHROPIC_API_KEY"
 [ -z "$GH_TOKEN" ]          && MISSING="$MISSING GH_TOKEN"
@@ -15,53 +15,45 @@ if [ -n "$MISSING" ]; then
     exit 1
 fi
 
-echo "✅ Env vars OK"
-
-# ── 2. Gunakan PORT dari Railway ────────────────────────────────────────────
-APP_PORT="${PORT:-3000}"
+APP_PORT="${PORT:-8080}"
 echo "✅ Port: $APP_PORT"
 
-# ── 3. Setup Git identity ──────────────────────────────────────────────────
+# ── 2. Git identity ────────────────────────────────────────────────────────
 [ -n "$GITHUB_NAME" ]  && git config --global user.name  "$GITHUB_NAME"
 [ -n "$GITHUB_EMAIL" ] && git config --global user.email "$GITHUB_EMAIL"
 git config --global --add safe.directory '*'
-echo "✅ Git config OK"
+echo "✅ Git OK"
 
-# ── 4. Pre-create .claude dirs (biar usage reader tidak spam ENOENT error) ──
-mkdir -p /root/.claude/projects
-echo "✅ Claude dirs OK"
-
-# ── 5. Auth GitHub CLI ─────────────────────────────────────────────────────
+# ── 3. GitHub CLI auth ─────────────────────────────────────────────────────
 echo "$GH_TOKEN" | gh auth login --with-token
 echo "✅ GitHub auth done"
 
-# ── 6. Persistent storage ──────────────────────────────────────────────────
+# ── 4. Persistent storage ──────────────────────────────────────────────────
 if [ -d "/data" ]; then
-    mkdir -p /data/.claude/projects /data/workspace
-    if [ ! -L "/root/.claude" ]; then
-        rm -rf /root/.claude
-        ln -sf /data/.claude /root/.claude
-    fi
-    if [ ! -L "/workspace" ]; then
-        rm -rf /workspace
-        ln -sf /data/workspace /workspace
-    fi
+    mkdir -p /data/.claude/projects /data/workspace /data/.config
+    [ ! -L "/root/.claude" ] && rm -rf /root/.claude && ln -sf /data/.claude /root/.claude
+    [ ! -L "/workspace" ]    && rm -rf /workspace    && ln -sf /data/workspace /workspace
+    [ ! -L "/root/.config" ] && rm -rf /root/.config && ln -sf /data/.config /root/.config
     echo "✅ Persistent storage OK"
 else
-    echo "⚠️  Tidak ada volume /data — data hilang saat redeploy"
+    mkdir -p /root/.claude/projects
+    echo "⚠️  Tidak ada /data volume"
 fi
 
-# ── 7. Launch ──────────────────────────────────────────────────────────────
+# ── 5. Set env vars untuk sesi terminal di VS Code ─────────────────────────
+export ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"
+export PASSWORD="$WEB_PASSWORD"   # code-server baca dari sini
+echo "export ANTHROPIC_API_KEY=\"$ANTHROPIC_API_KEY\"" >> /root/.bashrc
+
+# ── 6. Jalankan code-server (VS Code di browser) ───────────────────────────
 echo ""
-echo "🚀 Starting claude-code-web on port $APP_PORT..."
+echo "🚀 VS Code berjalan di port $APP_PORT"
+echo "   Buka domain Railway → masukkan password"
+echo "   Lalu buka Terminal → ketik: claude"
 echo ""
 
-npx claude-code-web \
-    --port "$APP_PORT" \
-    --auth "$WEB_PASSWORD" \
-    --no-open
-
-EXIT_CODE=$?
-echo "❌ claude-code-web exit: $EXIT_CODE"
-sleep 30
-exit $EXIT_CODE
+exec code-server \
+    --bind-addr "0.0.0.0:$APP_PORT" \
+    --auth password \
+    --disable-telemetry \
+    /workspace
