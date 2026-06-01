@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+# set -e DIHAPUS — biar script tidak mati karena warning/non-zero exit kecil
 
 echo "============================================"
 echo "  Claude Code Railway - Starting Up..."
@@ -24,6 +24,8 @@ if [ -n "$MISSING" ]; then
     exit 1
 fi
 
+echo "✅ Semua required env vars tersedia"
+
 # ── 2. Setup Git identity ───────────────────────────────────────────────────
 if [ -n "$GITHUB_NAME" ]; then
     git config --global user.name "$GITHUB_NAME"
@@ -35,16 +37,17 @@ if [ -n "$GITHUB_EMAIL" ]; then
     echo "✅ Git email: $GITHUB_EMAIL"
 fi
 
-# Safe directory biar git gak complain
 git config --global --add safe.directory '*'
 
 # ── 3. Auth GitHub CLI ──────────────────────────────────────────────────────
-echo "$GH_TOKEN" | gh auth login --with-token 2>&1
-if [ $? -eq 0 ]; then
+echo "→ Authenticating GitHub CLI..."
+echo "$GH_TOKEN" | gh auth login --with-token
+GH_EXIT=$?
+
+if [ $GH_EXIT -eq 0 ]; then
     echo "✅ GitHub CLI authenticated"
-    gh auth status
 else
-    echo "⚠️  GitHub CLI auth gagal — cek GH_TOKEN kamu"
+    echo "⚠️  GitHub CLI auth exit code: $GH_EXIT (lanjut tetap...)"
 fi
 
 # ── 4. Export Anthropic API Key ─────────────────────────────────────────────
@@ -54,28 +57,21 @@ echo "✅ Anthropic API Key loaded"
 # ── 5. Setup persistent storage (jika Railway Volume di-mount) ──────────────
 if [ -d "/data" ]; then
     echo "✅ Volume /data ditemukan — menggunakan persistent storage"
-    
-    # Symlink .claude config ke volume biar auth tetap ada
-    if [ ! -d "/data/.claude" ]; then
-        mkdir -p /data/.claude
-    fi
+
+    mkdir -p /data/.claude
     if [ ! -L "$HOME/.claude" ]; then
         ln -sf /data/.claude "$HOME/.claude"
     fi
 
-    # Symlink workspace ke volume
-    if [ ! -d "/data/workspace" ]; then
-        mkdir -p /data/workspace
-    fi
+    mkdir -p /data/workspace
     if [ ! -L "/workspace" ]; then
         rm -rf /workspace
         ln -sf /data/workspace /workspace
     fi
 
-    echo "✅ Persistent storage siap di /data"
+    echo "✅ Persistent storage siap"
 else
-    echo "⚠️  Volume /data tidak ditemukan — data HILANG saat redeploy"
-    echo "   Tambahkan Railway Volume di: Settings → Volumes → Mount path: /data"
+    echo "⚠️  Volume /data tidak ditemukan — data hilang saat redeploy"
 fi
 
 # ── 6. Info startup ─────────────────────────────────────────────────────────
@@ -84,12 +80,19 @@ echo "============================================"
 echo "  🚀 Menjalankan Claude Code Web..."
 echo "  📂 Workspace: /workspace"
 echo "  🌐 Port: 32352"
-echo "  🔑 Password: [dari WEB_PASSWORD env var]"
+echo "  🔑 Password protected: YES"
 echo "============================================"
 echo ""
 
 # ── 7. Jalankan claude-code-web ─────────────────────────────────────────────
-exec npx claude-code-web \
+npx claude-code-web \
     --port 32352 \
     --auth "$WEB_PASSWORD" \
     --no-open
+
+# Jika npx exit (crash), print error dan tunggu biar log kebaca
+EXIT_CODE=$?
+echo "❌ claude-code-web berhenti dengan exit code: $EXIT_CODE"
+echo "   Cek log di atas untuk detail error"
+sleep 30
+exit $EXIT_CODE
