@@ -1,5 +1,4 @@
 #!/bin/bash
-# set -e DIHAPUS — biar script tidak mati karena warning/non-zero exit kecil
 
 echo "============================================"
 echo "  Claude Code Railway - Starting Up..."
@@ -7,92 +6,56 @@ echo "============================================"
 
 # ── 1. Validasi environment variables ──────────────────────────────────────
 MISSING=""
-
-if [ -z "$ANTHROPIC_API_KEY" ]; then
-    MISSING="$MISSING ANTHROPIC_API_KEY"
-fi
-if [ -z "$GH_TOKEN" ]; then
-    MISSING="$MISSING GH_TOKEN"
-fi
-if [ -z "$WEB_PASSWORD" ]; then
-    MISSING="$MISSING WEB_PASSWORD"
-fi
+[ -z "$ANTHROPIC_API_KEY" ] && MISSING="$MISSING ANTHROPIC_API_KEY"
+[ -z "$GH_TOKEN" ]          && MISSING="$MISSING GH_TOKEN"
+[ -z "$WEB_PASSWORD" ]      && MISSING="$MISSING WEB_PASSWORD"
 
 if [ -n "$MISSING" ]; then
-    echo "❌ ERROR: Variable berikut belum di-set:$MISSING"
-    echo "   Set dulu di Railway → Variables tab"
+    echo "❌ ERROR: Variable belum di-set:$MISSING"
     exit 1
 fi
 
-echo "✅ Semua required env vars tersedia"
+echo "✅ Env vars OK"
 
-# ── 2. Setup Git identity ───────────────────────────────────────────────────
-if [ -n "$GITHUB_NAME" ]; then
-    git config --global user.name "$GITHUB_NAME"
-    echo "✅ Git name: $GITHUB_NAME"
-fi
+# ── 2. Gunakan PORT dari Railway (wajib untuk HTTP routing) ────────────────
+# Railway inject $PORT otomatis — HARUS dipakai, bukan hardcoded
+APP_PORT="${PORT:-32352}"
+echo "✅ Listening on port: $APP_PORT"
 
-if [ -n "$GITHUB_EMAIL" ]; then
-    git config --global user.email "$GITHUB_EMAIL"
-    echo "✅ Git email: $GITHUB_EMAIL"
-fi
-
+# ── 3. Setup Git identity ──────────────────────────────────────────────────
+[ -n "$GITHUB_NAME" ]  && git config --global user.name  "$GITHUB_NAME"
+[ -n "$GITHUB_EMAIL" ] && git config --global user.email "$GITHUB_EMAIL"
 git config --global --add safe.directory '*'
+echo "✅ Git config OK"
 
-# ── 3. Auth GitHub CLI ──────────────────────────────────────────────────────
-echo "→ Authenticating GitHub CLI..."
+# ── 4. Auth GitHub CLI ─────────────────────────────────────────────────────
 echo "$GH_TOKEN" | gh auth login --with-token
-GH_EXIT=$?
+echo "✅ GitHub auth done (exit: $?)"
 
-if [ $GH_EXIT -eq 0 ]; then
-    echo "✅ GitHub CLI authenticated"
-else
-    echo "⚠️  GitHub CLI auth exit code: $GH_EXIT (lanjut tetap...)"
-fi
-
-# ── 4. Export Anthropic API Key ─────────────────────────────────────────────
-export ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"
-echo "✅ Anthropic API Key loaded"
-
-# ── 5. Setup persistent storage (jika Railway Volume di-mount) ──────────────
+# ── 5. Persistent storage ──────────────────────────────────────────────────
 if [ -d "/data" ]; then
-    echo "✅ Volume /data ditemukan — menggunakan persistent storage"
-
-    mkdir -p /data/.claude
-    if [ ! -L "$HOME/.claude" ]; then
-        ln -sf /data/.claude "$HOME/.claude"
-    fi
-
-    mkdir -p /data/workspace
+    mkdir -p /data/.claude /data/workspace
+    [ ! -L "$HOME/.claude" ] && ln -sf /data/.claude "$HOME/.claude"
     if [ ! -L "/workspace" ]; then
         rm -rf /workspace
         ln -sf /data/workspace /workspace
     fi
-
-    echo "✅ Persistent storage siap"
+    echo "✅ Persistent storage OK"
 else
-    echo "⚠️  Volume /data tidak ditemukan — data hilang saat redeploy"
+    echo "⚠️  Tidak ada volume /data — data hilang saat redeploy"
 fi
 
-# ── 6. Info startup ─────────────────────────────────────────────────────────
+# ── 6. Launch ──────────────────────────────────────────────────────────────
 echo ""
-echo "============================================"
-echo "  🚀 Menjalankan Claude Code Web..."
-echo "  📂 Workspace: /workspace"
-echo "  🌐 Port: 32352"
-echo "  🔑 Password protected: YES"
-echo "============================================"
+echo "🚀 Starting claude-code-web on port $APP_PORT..."
 echo ""
 
-# ── 7. Jalankan claude-code-web ─────────────────────────────────────────────
 npx claude-code-web \
-    --port 32352 \
+    --port "$APP_PORT" \
     --auth "$WEB_PASSWORD" \
     --no-open
 
-# Jika npx exit (crash), print error dan tunggu biar log kebaca
 EXIT_CODE=$?
-echo "❌ claude-code-web berhenti dengan exit code: $EXIT_CODE"
-echo "   Cek log di atas untuk detail error"
+echo "❌ claude-code-web exit: $EXIT_CODE"
 sleep 30
 exit $EXIT_CODE
