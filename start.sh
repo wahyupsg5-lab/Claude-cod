@@ -17,10 +17,9 @@ fi
 
 echo "✅ Env vars OK"
 
-# ── 2. Gunakan PORT dari Railway (wajib untuk HTTP routing) ────────────────
-# Railway inject $PORT otomatis — HARUS dipakai, bukan hardcoded
-APP_PORT="${PORT:-32352}"
-echo "✅ Listening on port: $APP_PORT"
+# ── 2. Gunakan PORT dari Railway ────────────────────────────────────────────
+APP_PORT="${PORT:-3000}"
+echo "✅ Port: $APP_PORT"
 
 # ── 3. Setup Git identity ──────────────────────────────────────────────────
 [ -n "$GITHUB_NAME" ]  && git config --global user.name  "$GITHUB_NAME"
@@ -28,14 +27,21 @@ echo "✅ Listening on port: $APP_PORT"
 git config --global --add safe.directory '*'
 echo "✅ Git config OK"
 
-# ── 4. Auth GitHub CLI ─────────────────────────────────────────────────────
-echo "$GH_TOKEN" | gh auth login --with-token
-echo "✅ GitHub auth done (exit: $?)"
+# ── 4. Pre-create .claude dirs (biar usage reader tidak spam ENOENT error) ──
+mkdir -p /root/.claude/projects
+echo "✅ Claude dirs OK"
 
-# ── 5. Persistent storage ──────────────────────────────────────────────────
+# ── 5. Auth GitHub CLI ─────────────────────────────────────────────────────
+echo "$GH_TOKEN" | gh auth login --with-token
+echo "✅ GitHub auth done"
+
+# ── 6. Persistent storage ──────────────────────────────────────────────────
 if [ -d "/data" ]; then
-    mkdir -p /data/.claude /data/workspace
-    [ ! -L "$HOME/.claude" ] && ln -sf /data/.claude "$HOME/.claude"
+    mkdir -p /data/.claude/projects /data/workspace
+    if [ ! -L "/root/.claude" ]; then
+        rm -rf /root/.claude
+        ln -sf /data/.claude /root/.claude
+    fi
     if [ ! -L "/workspace" ]; then
         rm -rf /workspace
         ln -sf /data/workspace /workspace
@@ -45,7 +51,7 @@ else
     echo "⚠️  Tidak ada volume /data — data hilang saat redeploy"
 fi
 
-# ── 6. Launch ──────────────────────────────────────────────────────────────
+# ── 7. Launch ──────────────────────────────────────────────────────────────
 echo ""
 echo "🚀 Starting claude-code-web on port $APP_PORT..."
 echo ""
