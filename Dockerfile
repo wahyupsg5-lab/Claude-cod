@@ -1,12 +1,15 @@
 FROM node:20-slim
 
-# Install system dependencies
+# Install system dependencies + build tools (dibutuhkan node-pty dari claude-code-web)
 RUN apt-get update && apt-get install -y \
     git \
     curl \
     wget \
     unzip \
     ca-certificates \
+    python3 \
+    make \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
 # Install GitHub CLI
